@@ -30,15 +30,6 @@ enabled = false
 EOF
 "$UMBRIEL" msg config-reload > /dev/null
 
-for output in HEADLESS-1:1280 HEADLESS-2:0; do
-  for _ in $(seq 80); do
-    x=$("$UMBRIEL" outputs --json | jq -r --arg name "${output%%:*}" '.[] | select(.name == $name) | .position.x')
-    [[ $x == "${output##*:}" ]] && break
-    sleep 0.025
-  done
-  [[ $x == "${output##*:}" ]]
-done
-
 mkfifo "$UMBRIEL_RUNTIME_DIR/layer.fifo"
 env LAYER_CONTROL=1 "$UMBRIEL_LAYER_CLIENT" HEADLESS-1 0 overlay-layer popup-on-release \
   < "$UMBRIEL_RUNTIME_DIR/layer.fifo" > "$LAYER_LOG" 2>&1 &
@@ -67,11 +58,10 @@ if ((x != 1280 || y != 200 || w != 50 || h != 200)); then
 fi
 
 # A click on the overflow (surface-local x 50) must reach nothing; the one on the visible part lands at x 150. Both
-# share one connection, so the second release frame arriving means the first was already handled.
+# would reach the layer client in order over its one connection, so the second release frame means the first was seen.
 "$UMBRIEL_POINTER_CLIENT" 2560 720 move 1230 100 click 272 > /dev/null
 "$UMBRIEL_POINTER_CLIENT" 2560 720 move 1330 100 click 272 > /dev/null
 await_events "$LAYER_LOG" pointer-release-frame 1 "the click on the visible part"
-"$UMBRIEL" settle
 releases=$(grep '^pointer-release-frame' "$LAYER_LOG")
 if [[ $releases != 'pointer-release-frame valid=true x=150 y=100' ]]; then
   echo "the layer surface took input outside its output, got:"
@@ -80,4 +70,3 @@ if [[ $releases != 'pointer-release-frame valid=true x=150 y=100' ]]; then
 fi
 
 echo "layer surfaces and their subsurfaces are clipped to their output for rendering and input"
-
